@@ -25,7 +25,7 @@ pub trait Node {
     /// For example, you would want to do this if `.clone()` does not actually clone
     /// all the `Child` instances in the struct.
     /// 
-    /// Cou will use this when updating the ancestors of a node that was mutated.
+    /// Cod will use this when updating the ancestors of a node that was mutated.
     ///
     /// The implementaion should find the `Child` instance which corresponds to the
     /// given ID, and call `.poll()` on it.
@@ -44,8 +44,8 @@ pub trait Node {
     ///  - The struct contains a lot of fields which are expensive to copy and drop.
     ///  - The struct does not safely fit on the stack. (TODO: there are likely other issues with this)
     ///
-    /// Cou will use this when removing nodes from the tree, to find the children of this
-    /// node. If the implementation is not specialized, Cou will instead clone and then 
+    /// Cod will use this when removing nodes from the tree, to find the children of this
+    /// node. If the implementation is not specialized, Cod will instead clone and then 
     /// immediately drop the struct to determine the children.
     ///
     /// The implementation should call `.poll()` on each `Child` instance it contains
@@ -206,7 +206,7 @@ impl<'a, R, T> DerefMut for MutRef<'a, R, T> {
 
 impl<'a, R, T> Drop for MutRef<'a, R, T> {
     fn drop(&mut self) {
-        // TODO: end mutation session
+        // TODO: end mutation session and propagate update up
         todo!()
     }
 }

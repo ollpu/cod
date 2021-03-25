@@ -1,4 +1,4 @@
-# Cou
+# Cod
 
 Persistent app state managment without lenses.
 
