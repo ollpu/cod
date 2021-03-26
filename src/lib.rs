@@ -205,11 +205,12 @@ impl<T: NodeClone> Clone for Child<T> {
 
 impl<T: NodeClone> Drop for Child<T> {
     fn drop(&mut self) {
-        if !std::thread::panicking() {
-            CONTEXT.with(|c| {
-                Context::poll(c, PollReason::Drop, self.inner_id, Rc::clone(&self.inner_ref));
-            });
-        }
+        // XXX: This should only create inconsistencies in the newest version of the data,
+        // so going to an old state after catching an unwind _should_ be fine.
+        if std::thread::panicking() { return }
+        CONTEXT.with(|c| {
+            Context::poll(c, PollReason::Drop, self.inner_id, Rc::clone(&self.inner_ref));
+        });
     }
 }
 
@@ -234,6 +235,9 @@ impl<'a, T: NodeClone> DerefMut for MakeMutRef<'a, T> {
 
 impl<'a, T: NodeClone> Drop for MakeMutRef<'a, T> {
     fn drop(&mut self) {
+        // XXX: This should only create inconsistencies in the newest version of the data,
+        // so going to an old state after catching an unwind _should_ be fine.
+        if std::thread::panicking() { return }
         CONTEXT.with(|c| {
             Context::poll(c, PollReason::MakeMutPost, self.child.inner_id, Rc::clone(&self.child.inner_ref));
         });
@@ -354,6 +358,9 @@ impl<'a, R: NodeClone + Clone, T: NodeClone> DerefMut for MutRef<'a, R, T> {
 
 impl<'a, R: NodeClone + Clone, T: NodeClone> Drop for MutRef<'a, R, T> {
     fn drop(&mut self) {
+        // XXX: This should only create inconsistencies in the newest version of the data,
+        // so going to an old state after catching an unwind _should_ be fine.
+        if std::thread::panicking() { return }
         CONTEXT.with(|c| {
             self.state.apply_updates(Context::end_mutate(c));
         });

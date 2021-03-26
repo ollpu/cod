@@ -7,8 +7,8 @@ struct A {
     header: cod::Header,
     some_data: i32,
     child: cod::Child<B>,
-    optional_child: Option<cod::Child<B>>,
-    child_list: Vec<cod::Child<B>>,
+    // optional_child: Option<cod::Child<B>>,
+    // child_list: Vec<cod::Child<B>>,
 }
 
 #[derive(Node, Clone, Debug)]
@@ -23,9 +23,9 @@ fn main() {
         A {
             header: header.clone(),
             some_data: 15,
-            child: cod::Child::with_parent_header(&header, B { header: Default::default(), data: [1, 2, 3].to_vec() }),
-            optional_child: None,
-            child_list: vec![],
+            child: cod::Child::with_parent_header(&header, B { header: Default::default(), data: [1, 3].to_vec() }),
+            // optional_child: None,
+            // child_list: vec![],
         }
     });
     println!("Initial state:");
