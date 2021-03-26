@@ -8,3 +8,4 @@ edition = "2018"
 
 [dependencies]
 im-rc = "15.0.0"
+cod-node-derive = {path = "cod-node-derive"}
