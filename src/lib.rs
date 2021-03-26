@@ -3,6 +3,8 @@ use std::any::Any;
 use std::fmt::Debug;
 use std::fmt;
 
+pub use cod_node_derive::Node;
+
 mod id;
 mod context;
 mod danger_zone;
