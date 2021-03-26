@@ -15,6 +15,7 @@ pub(crate) struct Context {
     updates: Vec<IDMapUpdate>,
 }
 
+#[derive(Clone)]
 enum ContextStatus {
     Inactive,
     Mutation(TraversalStatus),
@@ -79,7 +80,8 @@ impl Context {
     pub(crate) fn poll_dyn(context: &RefCell<Self>, reason: PollReason, id: ID, node: Rc<dyn NodeClone>)
         -> Option<Rc<dyn NodeClone>> {
         // clone not strictly necessary for all arms, can be improved
-        match &mut context.borrow_mut().status {
+        let status = context.borrow().status.clone();
+        match status {
             ContextStatus::Inactive => None,
             ContextStatus::Mutation(traversal) => {
                 match traversal {
@@ -172,15 +174,20 @@ impl Context {
                     },
                 }
             },
-            ContextStatus::Propagation(Replacement { id: target_id, replace_with }, ref mut found) => {
+            ContextStatus::Propagation(Replacement { id: target_id, replace_with }, found) => {
                 // TODO: early exit if already found? feels dubious
-                if id == *target_id {
+                if id == target_id {
                     match reason {
                         PollReason::Clone | PollReason::ManualMut => {
-                            if *found {
+                            if found {
                                 panic!("Cod: The same ID was found in multiple `Child`s, state is corrupted")
                             }
-                            *found = true;
+                            match &mut context.borrow_mut().status {
+                                ContextStatus::Propagation(_, ref mut found) => {
+                                    *found = true;
+                                },
+                                _ => ()
+                            }
                             Some(replace_with.clone())
                         },
                         PollReason::Manual => {

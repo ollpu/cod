@@ -1,5 +1,7 @@
 use std::ops::{Deref, DerefMut};
 use std::any::Any;
+use std::fmt::Debug;
+use std::fmt;
 
 mod id;
 mod context;
@@ -19,17 +21,26 @@ pub use std::rc::Weak as Weak;
 pub use im_rc as im;
 
 
+/// !!! should not derive Clone, needs special behavior for deep clones.
+/// -> currently broken
+#[derive(Clone, Debug)]
 pub struct Header {
     id: ID,
     parent_id: Option<ID>,
 }
 
-impl Default for Header {
-    fn default() -> Self {
+impl Header {
+    pub fn new() -> Self {
         Header {
             id: new_id(),
             parent_id: None
         }
+    }
+}
+
+impl Default for Header {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -192,9 +203,11 @@ impl<T: NodeClone> Clone for Child<T> {
 
 impl<T: NodeClone> Drop for Child<T> {
     fn drop(&mut self) {
-        CONTEXT.with(|c| {
-            Context::poll(c, PollReason::Drop, self.inner_id, Rc::clone(&self.inner_ref));
-        });
+        if !std::thread::panicking() {
+            CONTEXT.with(|c| {
+                Context::poll(c, PollReason::Drop, self.inner_id, Rc::clone(&self.inner_ref));
+            });
+        }
     }
 }
 
@@ -222,6 +235,12 @@ impl<'a, T: NodeClone> Drop for MakeMutRef<'a, T> {
         CONTEXT.with(|c| {
             Context::poll(c, PollReason::MakeMutPost, self.child.inner_id, Rc::clone(&self.child.inner_ref));
         });
+    }
+}
+
+impl<T: NodeClone + Debug> Debug for Child<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(&*(self.inner_ref), f)
     }
 }
 
@@ -274,8 +293,8 @@ impl<R: NodeClone + Clone> State<R> {
         state
     }
 
-    pub fn get_mut<'a, T: NodeClone + Clone>(&'a mut self, node: &'a mut Rc<T>) -> MutRef<'a, R, T> {
-        Rc::make_mut(node);
+    pub fn get_mut<'a, T: NodeClone + Clone>(&'a mut self, mut node: Rc<T>) -> MutRef<'a, R, T> {
+        Rc::make_mut(&mut node);
         CONTEXT.with(|c| {
             Context::begin_mutate(c);
         });
@@ -313,7 +332,7 @@ impl<R: NodeClone + Clone> State<R> {
 
 pub struct MutRef<'a, R: NodeClone + Clone, T: NodeClone> {
     state: &'a mut State<R>,
-    node: &'a mut Rc<T>,
+    node: Rc<T>,
 }
 
 impl<'a, R: NodeClone + Clone, T: NodeClone> Deref for MutRef<'a, R, T> {
@@ -327,7 +346,7 @@ impl<'a, R: NodeClone + Clone, T: NodeClone> DerefMut for MutRef<'a, R, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         // Will not panic because the node Rc is mutably borrowed and
         // made unique upon creation of self.
-        Rc::get_mut(self.node).unwrap()
+        Rc::get_mut(&mut self.node).unwrap()
     }
 }
 
@@ -337,7 +356,7 @@ impl<'a, R: NodeClone + Clone, T: NodeClone> Drop for MutRef<'a, R, T> {
             self.state.apply_updates(Context::end_mutate(c));
         });
         self.state.id_lookup.insert(self.node.header().id, Rc::downgrade(&self.node) as Weak<dyn NodeClone>);
-        let mut prev_node = Rc::clone(self.node) as Rc<dyn NodeClone>;
+        let mut prev_node = Rc::clone(&self.node) as Rc<dyn NodeClone>;
         while let Some(parent_id) = prev_node.header().parent_id {
             let parent = Weak::upgrade(self.state.id_lookup.get(&parent_id).unwrap()).unwrap();
             CONTEXT.with(|c| {
