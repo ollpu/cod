@@ -1,5 +1,5 @@
 
-use quote::{quote, ToTokens};
+use quote::{quote};
 
 #[proc_macro_derive(Node)]
 pub fn node(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
@@ -11,7 +11,7 @@ pub fn node(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     }
 }
 
-fn derive_struct(derive_input: &syn::DeriveInput, data: &syn::DataStruct) -> proc_macro2::TokenStream {
+fn derive_struct(derive_input: &syn::DeriveInput, _data: &syn::DataStruct) -> proc_macro2::TokenStream {
     let name = &derive_input.ident;
 
     quote! {
