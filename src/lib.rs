@@ -109,33 +109,36 @@ impl<T: Node + Clone> NodeClone for T {
 
 pub struct Child<T: NodeClone> {
     inner_ref: Rc<T>,
-    inner_id: ID,
+}
+
+pub struct ParentID(ID);
+
+impl From<ID> for ParentID {
+    fn from(id: ID) -> Self { ParentID(id) }
+}
+impl From<&Header> for ParentID {
+    fn from(header: &Header) -> Self { ParentID(header.id) }
+}
+impl<P: Node> From<&P> for ParentID {
+    fn from(parent: &P) -> Self { ParentID(parent.header().id) }
 }
 
 impl<T: NodeClone + Clone> Child<T> {
-    // TODO: unify these with impl Into<ParentID>?
-    pub fn with_parent<P: Node>(parent: &P, node: T) -> Self {
-        Self::with_parent_id(parent.header().id, node)
+    pub fn with_parent(parent: impl Into<ParentID>, node: T) -> Self {
+        Self::with_parent_id(parent.into().0, node)
     }
 
-    pub fn with_parent_header(parent_header: &Header, node: T) -> Self {
-        Self::with_parent_id(parent_header.id, node)
-    }
-
-    pub fn with_parent_id(parent_id: ID, mut node: T) -> Self {
+    fn with_parent_id(parent_id: ID, mut node: T) -> Self {
         node.header_mut().parent_id = Some(parent_id);
-        let inner_id = node.header().id;
         let rc = Rc::new(node);
         let child = Self {
-            inner_ref: rc.clone(),
-            inner_id
+            inner_ref: rc.clone()
         };
         CONTEXT.with(|c| {
-            Context::poll(c, PollReason::Construct, inner_id, rc);
+            Context::poll(c, PollReason::Construct, rc);
         });
         child
     }
-
 
     /// TODO. avoid new clone if child has already been accessed during this mutation session.
     pub fn make_mut(&mut self) -> MakeMutRef<'_, T> {
@@ -143,7 +146,7 @@ impl<T: NodeClone + Clone> Child<T> {
             if Context::mutation_session_active(c) {
                 // let the context handle cloning (special stuff needs to happen)
                 if let Some(new_ref) =
-                    Context::poll_mut(c, PollReason::MakeMutPre, self.inner_id, Rc::clone(&self.inner_ref)) {
+                    Context::poll_mut(c, PollReason::MakeMutPre, Rc::clone(&self.inner_ref)) {
                     self.inner_ref = new_ref;
                 }
             } else {
@@ -160,19 +163,38 @@ impl<T: NodeClone + Clone> Child<T> {
     }
 
     pub fn get_id(&self) -> ID {
-        self.inner_id
+        self.inner_ref.header().id
+    }
+    
+    pub fn set_parent(&mut self, parent: impl Into<ParentID>) {
+        self.make_mut().header_mut().parent_id = Some(parent.into().0);
+    }
+
+    /// Deep clone and set new parent. If you do not need to change the parent,
+    /// you may also use `.clone()` directly.
+    pub fn deep_clone_to_parent(&self, parent: impl Into<ParentID>) -> Self {
+        let mut child = Self {
+            inner_ref: Rc::clone(&self.inner_ref),
+        };
+        CONTEXT.with(|c| {
+            if let Some(new_ref) =
+                Context::poll_mut(c, PollReason::DeepCopy(parent.into().0), Rc::clone(&child.inner_ref)) {
+                child.inner_ref = new_ref;
+            }
+        });
+        child
     }
 
     pub fn poll(&self) {
         CONTEXT.with(|c| {
-            Context::poll(c, PollReason::Manual, self.inner_id, Rc::clone(&self.inner_ref));
+            Context::poll(c, PollReason::Manual, Rc::clone(&self.inner_ref));
         });
     }
 
     pub fn poll_mut(&mut self) {
         CONTEXT.with(|c| {
             if let Some(new_ref) =
-                Context::poll_mut(c, PollReason::ManualMut, self.inner_id, Rc::clone(&self.inner_ref)) {
+                Context::poll_mut(c, PollReason::ManualMut, Rc::clone(&self.inner_ref)) {
                 self.inner_ref = new_ref;
             }
         });
@@ -193,11 +215,10 @@ impl<T: NodeClone> Clone for Child<T> {
     fn clone(&self) -> Self {
         let mut child = Self {
             inner_ref: Rc::clone(&self.inner_ref),
-            inner_id: self.inner_id,
         };
         CONTEXT.with(|c| {
             if let Some(new_ref) =
-                Context::poll_mut(c, PollReason::Clone, child.inner_id, Rc::clone(&child.inner_ref)) {
+                Context::poll_mut(c, PollReason::Clone, Rc::clone(&child.inner_ref)) {
                 child.inner_ref = new_ref;
             }
         });
@@ -211,7 +232,7 @@ impl<T: NodeClone> Drop for Child<T> {
         // so going to an old state after catching an unwind _should_ be fine.
         if std::thread::panicking() { return }
         CONTEXT.with(|c| {
-            Context::poll(c, PollReason::Drop, self.inner_id, Rc::clone(&self.inner_ref));
+            Context::poll(c, PollReason::Drop, Rc::clone(&self.inner_ref));
         });
     }
 }
@@ -241,7 +262,7 @@ impl<'a, T: NodeClone> Drop for MakeMutRef<'a, T> {
         // so going to an old state after catching an unwind _should_ be fine.
         if std::thread::panicking() { return }
         CONTEXT.with(|c| {
-            Context::poll(c, PollReason::MakeMutPost, self.child.inner_id, Rc::clone(&self.child.inner_ref));
+            Context::poll(c, PollReason::MakeMutPost, Rc::clone(&self.child.inner_ref));
         });
     }
 }

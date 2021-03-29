@@ -59,6 +59,7 @@ pub(crate) enum IDMapUpdate {
 #[derive(Clone, Copy)]
 pub(crate) enum PollReason {
     Construct,
+    DeepCopy(ID),
     Clone,
     Drop,
     MakeMutPre,
@@ -68,19 +69,20 @@ pub(crate) enum PollReason {
 }
 
 impl Context {
-    pub(crate) fn poll<T: NodeClone>(context: &RefCell<Self>, reason: PollReason, id: ID, node: Rc<T>) {
+    pub(crate) fn poll<T: NodeClone>(context: &RefCell<Self>, reason: PollReason, node: Rc<T>) {
         // poll is quite massive, so I assume dynamic dispatch is a net positive
-        let changed = Context::poll_dyn(context, reason, id, node as Rc<dyn NodeClone>);
+        let changed = Context::poll_dyn(context, reason, node as Rc<dyn NodeClone>);
         assert!(changed.is_none());
     }
 
-    pub(crate) fn poll_mut<T: NodeClone>(context: &RefCell<Self>, reason: PollReason, id: ID, node: Rc<T>)
+    pub(crate) fn poll_mut<T: NodeClone>(context: &RefCell<Self>, reason: PollReason, node: Rc<T>)
         -> Option<Rc<T>> {
-        Context::poll_dyn(context, reason, id, node as Rc<dyn NodeClone>).map(|n| downcast_rc(n).unwrap())
+        Context::poll_dyn(context, reason, node as Rc<dyn NodeClone>).map(|n| downcast_rc(n).unwrap())
     }
 
-    pub(crate) fn poll_dyn(context: &RefCell<Self>, reason: PollReason, id: ID, node: Rc<dyn NodeClone>)
+    pub(crate) fn poll_dyn(context: &RefCell<Self>, reason: PollReason, node: Rc<dyn NodeClone>)
         -> Option<Rc<dyn NodeClone>> {
+        let id = node.header().id;
         // clone not strictly necessary for all arms, can be improved
         let status = context.borrow().status.clone();
         match status {
@@ -94,21 +96,33 @@ impl Context {
                                 context.borrow_mut().node_map_update(id, &node);
                                 None
                             },
+                            PollReason::DeepCopy(parent_id) => {
+                                // initiate deep copy changing parent
+                                {
+                                    let mut context = context.borrow_mut();
+                                    context.status = ContextStatus::Mutation(TraversalStatus::DeepCopy);
+                                    context.deep_copy_id_stack.clear();
+                                    context.deep_copy_id_stack.push(parent_id);
+                                }
+                                let new_node = Context::poll_dyn(context, reason, node);
+                                context.borrow_mut().status = ContextStatus::Mutation(TraversalStatus::Inactive);
+                                new_node
+                            },
                             PollReason::Clone => {
-                                // initiate deep copy
+                                // initiate deep copy without changing parent
                                 {
                                     let mut context = context.borrow_mut();
                                     context.status = ContextStatus::Mutation(TraversalStatus::DeepCopy);
                                     context.deep_copy_id_stack.clear();
                                 }
-                                let new_node = Context::poll_dyn(context, reason, id, node);
+                                let new_node = Context::poll_dyn(context, reason, node);
                                 context.borrow_mut().status = ContextStatus::Mutation(TraversalStatus::Inactive);
                                 new_node
                             },
                             PollReason::Drop => {
                                 // initiate recursive removal
                                 context.borrow_mut().status = ContextStatus::Mutation(TraversalStatus::Removal);
-                                let new_node = Context::poll_dyn(context, reason, id, node);
+                                let new_node = Context::poll_dyn(context, reason, node);
                                 context.borrow_mut().status = ContextStatus::Mutation(TraversalStatus::Inactive);
                                 new_node
                             },

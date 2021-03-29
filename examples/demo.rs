@@ -23,7 +23,7 @@ fn main() {
         A {
             header: header.clone(),
             some_data: 15,
-            child: cod::Child::with_parent_header(&header, B { header: Default::default(), data: [1, 2, 3].to_vec() }),
+            child: cod::Child::with_parent(&header, B { header: Default::default(), data: [1, 2, 3].to_vec() }),
             optional_child: None,
             child_list: vec![],
         }

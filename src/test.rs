@@ -15,7 +15,7 @@ impl TestNode {
         TestNode {
             header: header.clone(),
             data,
-            child: child.map(|c| Child::with_parent_header(&header, c)),
+            child: child.map(|c| Child::with_parent(&header, c)),
             second_child: None
         }
     }
