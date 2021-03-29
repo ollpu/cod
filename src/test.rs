@@ -13,10 +13,10 @@ impl TestNode {
     fn new(data: i32, child: Option<TestNode>) -> TestNode {
         let header = Header::new();
         TestNode {
-            header: header.clone(),
             data,
             child: child.map(|c| Child::with_parent(&header, c)),
-            second_child: None
+            second_child: None,
+            header,
         }
     }
 }
