@@ -4,6 +4,7 @@
 use std::cell::RefCell;
 use crate::{NodeClone, ID, Rc, Weak};
 use crate::danger_zone::downcast_rc;
+use crate::id::new_id;
 
 thread_local! {
     pub(crate) static CONTEXT: RefCell<Context> = Default::default();
@@ -13,6 +14,7 @@ thread_local! {
 pub(crate) struct Context {
     status: ContextStatus,
     updates: Vec<IDMapUpdate>,
+    deep_copy_id_stack: Vec<ID>,
 }
 
 #[derive(Clone)]
@@ -72,7 +74,7 @@ impl Context {
         assert!(changed.is_none());
     }
 
-    pub(crate) fn poll_mut<'a, T: NodeClone>(context: &RefCell<Self>, reason: PollReason, id: ID, node: Rc<T>)
+    pub(crate) fn poll_mut<T: NodeClone>(context: &RefCell<Self>, reason: PollReason, id: ID, node: Rc<T>)
         -> Option<Rc<T>> {
         Context::poll_dyn(context, reason, id, node as Rc<dyn NodeClone>).map(|n| downcast_rc(n).unwrap())
     }
@@ -94,7 +96,11 @@ impl Context {
                             },
                             PollReason::Clone => {
                                 // initiate deep copy
-                                context.borrow_mut().status = ContextStatus::Mutation(TraversalStatus::DeepCopy);
+                                {
+                                    let mut context = context.borrow_mut();
+                                    context.status = ContextStatus::Mutation(TraversalStatus::DeepCopy);
+                                    context.deep_copy_id_stack.clear();
+                                }
                                 let new_node = Context::poll_dyn(context, reason, id, node);
                                 context.borrow_mut().status = ContextStatus::Mutation(TraversalStatus::Inactive);
                                 new_node
@@ -127,6 +133,8 @@ impl Context {
                         match reason {
                             PollReason::Clone | PollReason::ManualMut => {
                                 let mut new_node;
+                                let cloned_id = new_id();
+                                context.borrow_mut().deep_copy_id_stack.push(cloned_id);
                                 if node.implements_poll_all() {
                                     // temporarily deactivate the context
                                     context.borrow_mut().status = ContextStatus::Inactive;
@@ -140,8 +148,15 @@ impl Context {
                                     // recurse directly, clones will cause polls
                                     new_node = node.dyn_clone();
                                 }
+                                context.borrow_mut().deep_copy_id_stack.pop();
+                                let mut header = Rc::get_mut(&mut new_node).unwrap().header_mut();
+                                header.id = cloned_id;
+                                // parent_id not changed on the topmost node of the deep copy
+                                if let Some(parent_id) = context.borrow_mut().deep_copy_id_stack.last() {
+                                    header.parent_id = Some(*parent_id);
+                                }
                                 // store map update
-                                context.borrow_mut().node_map_update(id, &new_node);
+                                context.borrow_mut().node_map_update(cloned_id, &new_node);
                                 Some(new_node)
                             },
                             PollReason::Manual => {

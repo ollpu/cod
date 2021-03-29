@@ -8,6 +8,8 @@ pub use cod_node_derive::Node;
 mod id;
 mod context;
 mod danger_zone;
+#[cfg(test)]
+mod test;
 
 pub use id::ID;
 use id::new_id;
@@ -22,9 +24,6 @@ pub use std::rc::Rc as Rc;
 pub use std::rc::Weak as Weak;
 pub use im_rc as im;
 
-
-/// !!! should not derive Clone, needs special behavior for deep clones.
-/// -> currently broken
 #[derive(Clone, Debug)]
 pub struct Header {
     id: ID,
@@ -114,6 +113,7 @@ pub struct Child<T: NodeClone> {
 }
 
 impl<T: NodeClone + Clone> Child<T> {
+    // TODO: unify these with impl Into<ParentID>?
     pub fn with_parent<P: Node>(parent: &P, node: T) -> Self {
         Self::with_parent_id(parent.header().id, node)
     }
@@ -135,7 +135,6 @@ impl<T: NodeClone + Clone> Child<T> {
         });
         child
     }
-
 
 
     /// TODO. avoid new clone if child has already been accessed during this mutation session.
@@ -188,6 +187,9 @@ impl<T: NodeClone> Deref for Child<T> {
 }
 
 impl<T: NodeClone> Clone for Child<T> {
+    // TODO: for user-facing cloning, there should (instead) be a separate deep_clone
+    // method that takes a new parent. similarly, there shold be a helper
+    // for moving Childs to a different parent.
     fn clone(&self) -> Self {
         let mut child = Self {
             inner_ref: Rc::clone(&self.inner_ref),
