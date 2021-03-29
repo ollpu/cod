@@ -14,6 +14,7 @@ thread_local! {
 pub(crate) struct Context {
     status: ContextStatus,
     updates: Vec<IDMapUpdate>,
+    /// FIXME: is never shrinked
     deep_copy_id_stack: Vec<ID>,
 }
 
