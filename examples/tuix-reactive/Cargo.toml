@@ -1,0 +1,9 @@
+[package]
+name = "cod-tuix-reactive-example"
+version = "0.1.0"
+authors = ["Roope Salmi <rpsalmi@gmail.com>", "George Atkinson <geomyles@yahoo.co.uk>"]
+edition = "2018"
+
+[dependencies]
+cod = {path = "../.."}
+tuix = {git = "https://github.com/geom3trik/tuix", branch = "experiment"}

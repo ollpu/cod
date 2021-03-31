@@ -24,7 +24,7 @@ pub use std::rc::Rc as Rc;
 pub use std::rc::Weak as Weak;
 pub use im_rc as im;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Header {
     id: ID,
     parent_id: Option<ID>,
