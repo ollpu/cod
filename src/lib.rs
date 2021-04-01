@@ -16,7 +16,7 @@ use id::new_id;
 
 use context::{CONTEXT, Context, PollReason, Replacement, IDMapUpdate};
 
-use danger_zone::downcast_rc;
+pub use danger_zone::{downcast_rc, downcast_ref, downcast_mut};
 
 /// Can be changed to Arc later. However, the design is not thread-aware
 /// when mutating. So appropriate !Send/!Syncs need to be defined before changing.
@@ -36,6 +36,12 @@ impl Header {
             id: new_id(),
             parent_id: None
         }
+    }
+    pub fn id(&self) -> ID {
+       self.id
+    }
+    pub fn parent_id(&self) -> Option<ID> {
+        self.parent_id
     }
 }
 
@@ -94,6 +100,7 @@ pub trait Node: 'static {
 /// It will be automatically implemented for any struct that is `Node + Clone`.
 pub trait NodeClone: Node + Any {
     fn dyn_clone(&self) -> Rc<dyn NodeClone>;
+    fn into_dyn(self: Rc<Self>) -> Rc<dyn NodeClone>;
     /// clone, then immediately drop. used for reflection
     fn cod(&self);
 }
@@ -101,6 +108,9 @@ pub trait NodeClone: Node + Any {
 impl<T: Node + Clone> NodeClone for T {
     fn dyn_clone(&self) -> Rc<dyn NodeClone> {
         Rc::new(self.clone())
+    }
+    fn into_dyn(self: Rc<Self>) -> Rc<dyn NodeClone> {
+        self as Rc<dyn NodeClone>
     }
     fn cod(&self) {
         let _ = self.clone();
@@ -333,6 +343,17 @@ impl<R: NodeClone + Clone> State<R> {
         }
     }
 
+    pub fn get_mut_dyn<'a>(&'a mut self, mut node: Rc<dyn NodeClone>) -> MutRef<'a, R, dyn NodeClone> {
+        node = node.dyn_clone();
+        CONTEXT.with(|c| {
+            Context::begin_mutate(c);
+        });
+        MutRef {
+            state: self,
+            node
+        }
+    }
+
     pub fn ref_from_id(&self, id: ID) -> Option<Rc<dyn NodeClone>> {
         Weak::upgrade(self.id_lookup.get(&id)?)
     }
@@ -359,19 +380,19 @@ impl<R: NodeClone + Clone> State<R> {
     }
 }
 
-pub struct MutRef<'a, R: NodeClone + Clone, T: NodeClone> {
+pub struct MutRef<'a, R: NodeClone + Clone, T: NodeClone + ?Sized> {
     state: &'a mut State<R>,
     node: Rc<T>,
 }
 
-impl<'a, R: NodeClone + Clone, T: NodeClone> Deref for MutRef<'a, R, T> {
+impl<'a, R: NodeClone + Clone, T: NodeClone + ?Sized> Deref for MutRef<'a, R, T> {
     type Target = T;
     fn deref(&self) -> &Self::Target {
         &self.node
     }
 }
 
-impl<'a, R: NodeClone + Clone, T: NodeClone> DerefMut for MutRef<'a, R, T> {
+impl<'a, R: NodeClone + Clone, T: NodeClone + ?Sized> DerefMut for MutRef<'a, R, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         // Will not panic because the node Rc is mutably borrowed and
         // made unique upon creation of self.
@@ -379,7 +400,7 @@ impl<'a, R: NodeClone + Clone, T: NodeClone> DerefMut for MutRef<'a, R, T> {
     }
 }
 
-impl<'a, R: NodeClone + Clone, T: NodeClone> Drop for MutRef<'a, R, T> {
+impl<'a, R: NodeClone + Clone, T: NodeClone + ?Sized> Drop for MutRef<'a, R, T> {
     fn drop(&mut self) {
         // XXX: This should only create inconsistencies in the newest version of the data,
         // so going to an old state after catching an unwind _should_ be fine.
@@ -387,13 +408,13 @@ impl<'a, R: NodeClone + Clone, T: NodeClone> Drop for MutRef<'a, R, T> {
         CONTEXT.with(|c| {
             self.state.apply_updates(Context::end_mutate(c));
         });
-        self.state.id_lookup.insert(self.node.header().id, Rc::downgrade(&self.node) as Weak<dyn NodeClone>);
-        let mut prev_node = Rc::clone(&self.node) as Rc<dyn NodeClone>;
+        self.state.id_lookup.insert(self.node.header().id, Rc::downgrade(&Rc::clone(&self.node).into_dyn()));
+        let mut prev_node = Rc::clone(&self.node).into_dyn();
         while let Some(parent_id) = prev_node.header().parent_id {
             let parent = Weak::upgrade(self.state.id_lookup.get(&parent_id).unwrap()).unwrap();
             CONTEXT.with(|c| {
                 Context::set_replacement(c,
-                    Replacement { id: prev_node.header().id, replace_with: Rc::clone(&prev_node) as Rc<dyn NodeClone> }
+                    Replacement { id: prev_node.header().id, replace_with: Rc::clone(&prev_node) }
                 );
             });
             prev_node = parent.dyn_clone();
