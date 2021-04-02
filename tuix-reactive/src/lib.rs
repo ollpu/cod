@@ -2,7 +2,7 @@
 mod diff;
 mod mutation_manager;
 
-pub use diff::vec::VecDiffer;
+pub use diff::*;
 pub use mutation_manager::{
     MutationManager, MutationEvent, ConfigureObserver, ObservationEvent, mutate,
     configure_observer
