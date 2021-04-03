@@ -62,17 +62,20 @@ pub struct MutationManager<T: NodeClone + Clone> {
 }
 
 #[derive(Clone)]
+/// Mirrors UpdateEvent, expect the data is sent as `dyn` by the mutation manager,
+/// because it is unaware of the concrete types.
 pub enum ObservationEvent {
-    Updated(ID, Rc<dyn NodeClone>),
+    Updated(ID, Rc<dyn NodeClone>, bool),
     Removed(ID),
 }
 impl fmt::Debug for ObservationEvent {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ObservationEvent::Updated(id, node) => {
+            ObservationEvent::Updated(id, node, animate) => {
                 f.debug_tuple("Updated")
                     .field(id)
                     .field(&Rc::as_ptr(node))
+                    .field(&animate)
                     .finish()
             },
             ObservationEvent::Removed(id) => {
@@ -132,18 +135,18 @@ impl<T: NodeClone + Clone> MutationManager<T> {
                 desc.apply.borrow_mut()(&mut *node_mut);
             }
             // FIXME: optimize
-            self.check_all_observers(state);
+            self.check_all_observers(state, true);
             event.consume();
         }
     }
 
-    fn check_all_observers(&mut self, state: &mut State) {
+    fn check_all_observers(&mut self, state: &mut State, animate: bool) {
         let new_state = self.state.clone();
         for (entity, id, old_ref, keep) in self.observers.iter_mut() {
             if let Some(new_ref) = new_state.ref_from_id(*id) {
                 if Weak::as_ptr(old_ref) != Rc::as_ptr(&new_ref) {
                     *old_ref = Rc::downgrade(&new_ref);
-                    state.insert_event(Event::new(ObservationEvent::Updated(*id, new_ref)).target(*entity));
+                    state.insert_event(Event::new(ObservationEvent::Updated(*id, new_ref, animate)).target(*entity));
                 }
                 *keep = true;
             } else {
@@ -157,7 +160,7 @@ impl<T: NodeClone + Clone> MutationManager<T> {
     fn add_observer(&mut self, state: &mut State, entity: Entity, id: ID) {
         if let Some(node) = self.state.ref_from_id(id) {
             self.observers.push((entity, id, Rc::downgrade(&node), true));
-            state.insert_event(Event::new(ObservationEvent::Updated(id, node)).target(entity));
+            state.insert_event(Event::new(ObservationEvent::Updated(id, node, false)).target(entity));
         } else {
             state.insert_event(Event::new(ObservationEvent::Removed(id)).target(entity));
         }
@@ -181,6 +184,6 @@ impl<T: NodeClone + Clone> MutationManager<T> {
 
     pub fn replace_state(&mut self, state: &mut State, replacement: cod::State<T>) {
         self.state = replacement;
-        self.check_all_observers(state);
+        self.check_all_observers(state, false);
     }
 }

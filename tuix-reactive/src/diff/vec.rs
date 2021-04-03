@@ -2,7 +2,7 @@ use tuix::*;
 use cod::Node;
 use cod::Rc;
 
-use crate::UpdateEvent;
+use crate::{UpdateEvent, AnimationRequest};
 
 pub struct VecDiffer<T> {
     list: Vec<(cod::ID, Entity, *const T, bool)>
@@ -13,8 +13,8 @@ impl<T> Default for VecDiffer<T> {
     }
 }
 
-impl<T: Node + Clone> VecDiffer<T> where UpdateEvent<T>: Message {
-    pub fn update<C: FnMut(&mut State, Rc<T>) -> Entity>(&mut self, state: &mut State, updated: &Vec<cod::Child<T>>, mut create: C) {
+impl<T: Node + Clone> VecDiffer<T> {
+    pub fn update<C: FnMut(&mut State, Rc<T>) -> Entity>(&mut self, state: &mut State, updated: &Vec<cod::Child<T>>, animate: bool, mut create: C) {
         let fast_path = self.list.iter().map(|it| it.0).eq(
             // TODO: potential optimization by caching ID in Child
             updated.iter().map(|ch| ch.get_id())
@@ -23,7 +23,7 @@ impl<T: Node + Clone> VecDiffer<T> where UpdateEvent<T>: Message {
             for (old, upd) in self.list.iter().zip(updated.iter()) {
                 let upd_ref = upd.get_ref();
                 if old.2 != Rc::as_ptr(&upd_ref) {
-                    state.insert_event(Event::new(UpdateEvent(upd_ref)).target(old.1));
+                    state.insert_event(Event::new(UpdateEvent::Update(upd_ref, animate)).target(old.1));
                 }
             }
         } else {
@@ -36,18 +36,25 @@ impl<T: Node + Clone> VecDiffer<T> where UpdateEvent<T>: Message {
                     Ok(i) => {
                         let ref mut old = self.list[i];
                         new_list.push((old.0, old.1, Rc::as_ptr(&upd_ref), false));
-                        state.insert_event(Event::new(UpdateEvent(upd_ref)).target(old.1));
+                        state.insert_event(Event::new(UpdateEvent::Update(upd_ref, animate)).target(old.1));
                         old.3 = true;
                     },
                     Err(_) => {
                        let entity = create(state, upd_ref.clone());
+                       if animate {
+                           state.insert_event(Event::new(AnimationRequest::Appear).target(entity));
+                       }
                        new_list.push((upd.get_id(), entity, Rc::as_ptr(&upd_ref), false));
                     }
                 }
             }
             for it in self.list.iter() {
                 if !it.3 {
-                    state.remove(it.1);
+                    if animate {
+                        state.insert_event(Event::new(UpdateEvent::<T>::Remove).target(it.1));
+                    } else {
+                        state.remove(it.1);
+                    }
                 }
             }
             self.list = new_list;
