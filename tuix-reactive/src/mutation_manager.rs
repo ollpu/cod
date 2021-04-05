@@ -146,11 +146,11 @@ impl<T: NodeClone + Clone> MutationManager<T> {
             if let Some(new_ref) = new_state.ref_from_id(*id) {
                 if Weak::as_ptr(old_ref) != Rc::as_ptr(&new_ref) {
                     *old_ref = Rc::downgrade(&new_ref);
-                    state.insert_event(Event::new(ObservationEvent::Updated(*id, new_ref, animate)).target(*entity));
+                    state.insert_event(Event::new(ObservationEvent::Updated(*id, new_ref, animate)).target(*entity).propagate(Propagation::Direct));
                 }
                 *keep = true;
             } else {
-                state.insert_event(Event::new(ObservationEvent::Removed(*id)).target(*entity));
+                state.insert_event(Event::new(ObservationEvent::Removed(*id)).target(*entity).propagate(Propagation::Direct));
                 *keep = false;
             }
         }
@@ -160,9 +160,9 @@ impl<T: NodeClone + Clone> MutationManager<T> {
     fn add_observer(&mut self, state: &mut State, entity: Entity, id: ID) {
         if let Some(node) = self.state.ref_from_id(id) {
             self.observers.push((entity, id, Rc::downgrade(&node), true));
-            state.insert_event(Event::new(ObservationEvent::Updated(id, node, false)).target(entity));
+            state.insert_event(Event::new(ObservationEvent::Updated(id, node, false)).target(entity).propagate(Propagation::Direct));
         } else {
-            state.insert_event(Event::new(ObservationEvent::Removed(id)).target(entity));
+            state.insert_event(Event::new(ObservationEvent::Removed(id)).target(entity).propagate(Propagation::Direct));
         }
     }
 

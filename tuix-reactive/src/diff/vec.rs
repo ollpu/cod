@@ -30,7 +30,7 @@ impl<T: Node + Clone> VecDiffer<T> {
             for (old, upd) in self.list.iter().zip(updated.iter()) {
                 let upd_ref = upd.get_ref();
                 if old.2 != Rc::as_ptr(&upd_ref) {
-                    state.insert_event(Event::new(UpdateEvent::Update(upd_ref, animate)).target(old.1));
+                    state.insert_event(Event::new(UpdateEvent::Update(upd_ref, animate)).target(old.1).propagate(Propagation::Direct));
                 }
             }
         } else {
@@ -43,13 +43,13 @@ impl<T: Node + Clone> VecDiffer<T> {
                     Ok(i) => {
                         let ref mut old = self.list[i];
                         new_list.push((old.0, old.1, Rc::as_ptr(&upd_ref), false));
-                        state.insert_event(Event::new(UpdateEvent::Update(upd_ref, animate)).target(old.1));
+                        state.insert_event(Event::new(UpdateEvent::Update(upd_ref, animate)).target(old.1).propagate(Propagation::Direct));
                         old.3 = true;
                     },
                     Err(_) => {
                        let entity = create(state, self.container, upd_ref.clone());
                        if animate {
-                           state.insert_event(Event::new(AnimationRequest::Appear).target(entity));
+                           state.insert_event(Event::new(AnimationRequest::Appear).target(entity).propagate(Propagation::Direct));
                        }
                        new_list.push((upd.get_id(), entity, Rc::as_ptr(&upd_ref), false));
                     }
@@ -58,7 +58,7 @@ impl<T: Node + Clone> VecDiffer<T> {
             for it in self.list.iter() {
                 if !it.3 {
                     if animate {
-                        state.insert_event(Event::new(UpdateEvent::<T>::Remove).target(it.1));
+                        state.insert_event(Event::new(UpdateEvent::<T>::Remove).target(it.1).propagate(Propagation::Direct));
                     } else {
                         state.remove(it.1);
                     }
