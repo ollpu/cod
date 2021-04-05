@@ -1,12 +1,14 @@
 
 mod diff;
 mod mutation_manager;
+mod undo;
 
 pub use diff::*;
 pub use mutation_manager::{
     MutationManager, MutationEvent, ConfigureObserver, ObservationEvent, mutate,
     configure_observer
 };
+pub use undo::*;
 
 use cod::Rc;
 

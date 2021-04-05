@@ -22,29 +22,31 @@ struct TodoState {
 enum TodoEvent {
     Add(Option<Rc<Task>>),
     Remove(cod::ID),
+    Edit(cod::ID),
     Debug,
+    StartUndoState,
+    Undo,
+    Redo,
 }
 
 struct TodoApp {
-    mutation_manager: MutationManager<TodoState>,
+    undo_manager: BasicUndoManager<TodoState>,
 
     data: Rc<TodoState>,
     tasks: VecDiffer<Task>,
+    editor: Entity,
 }
 
 impl TodoApp {
     pub fn new() -> Self {
-        //let mut states = Vec::new();
-
         // Add an initial state
         let state = cod::State::new(&TodoState::default());
 
         Self {
-            //index: 0,
             data: state.root_ref(),
-            mutation_manager: MutationManager::new(state),
-            //states,
+            undo_manager: BasicUndoManager::new(state, 128),
             tasks: Default::default(),
+            editor: Entity::null(),
         }
     }
 }
@@ -56,17 +58,29 @@ impl Widget for TodoApp {
         configure_observer(state, entity, ConfigureObserver::RegisterRoot);
         entity 
             .set_background_color(state, Color::blue())
-            .set_flex_grow(state, 1.0)
+            .set_flex_direction(state, FlexDirection::Row)
+            .set_flex_grow(state, 1.0);
+        let container = VBox::new().build(state, entity, |builder| {
+            builder.set_flex_grow(1.0)
+        });
+        self.tasks.set_container(container);
+        self.editor = TaskEditor::default().build(state, entity, |builder|
+            builder
+                .set_flex_grow(1.0)
+                .set_background_color(Color::green())
+        );
+        entity
     }
 
     fn on_event(&mut self, state: &mut State, entity: Entity, event: &mut Event) {
-        self.mutation_manager.on_event(state, event);
+        self.undo_manager.on_event(state, event);
         // Handle Custom Todo Events
-        if let Some(todo_event) = event.message.downcast() {
-            match todo_event {
+        if let Some(todo_event) = event.message.downcast::<TodoEvent>() {
+            match todo_event.clone() {
                 TodoEvent::Add(task) => {
                     println!("Add a Task");
                     
+                    state.insert_event(Event::new(TodoEvent::StartUndoState).target(entity));
                     mutate(state, entity, &self.data, |data| {
                         data.tasks.push(cod::Child::with_parent(&*data, Task {
                             header: Default::default(),
@@ -74,15 +88,34 @@ impl Widget for TodoApp {
                             completed: false,
                         }));
                     });
+                    event.consume();
                 }
                 TodoEvent::Debug => {
                     println!("{:?}", self.data);
+                    event.consume();
                 }
                 TodoEvent::Remove(id) => {
-                    let id = *id;
+                    state.insert_event(Event::new(TodoEvent::StartUndoState).target(entity));
                     mutate(state, entity, &self.data, move |data| {
                         data.tasks.retain(|t| t.get_id() != id);
                     });
+                    event.consume();
+                }
+                TodoEvent::Edit(id) => {
+                    state.insert_event(Event::new(TodoEvent::Edit(id)).target(self.editor).propagate(Propagation::Direct));
+                    event.consume();
+                }
+                TodoEvent::StartUndoState => {
+                    self.undo_manager.start_undo_state();
+                    event.consume();
+                }
+                TodoEvent::Undo => {
+                    self.undo_manager.undo(state);
+                    event.consume();
+                }
+                TodoEvent::Redo => {
+                    self.undo_manager.redo(state);
+                    event.consume();
                 }
             }
         }
@@ -91,13 +124,20 @@ impl Widget for TodoApp {
         if let Some(window_event) = event.message.downcast() {
             match window_event {
                 WindowEvent::KeyDown(code, _) => {
-                    if *code == Code::KeyA {
-                        // Send event to add new task
-                        state.insert_event(Event::new(TodoEvent::Add(None)).target(entity));
-                    }
-
-                    if *code == Code::KeyD {
-                        state.insert_event(Event::new(TodoEvent::Debug).target(entity));
+                    match *code {
+                        Code::KeyA => {
+                            state.insert_event(Event::new(TodoEvent::Add(None)).target(entity));
+                        },
+                        Code::KeyD => {
+                            state.insert_event(Event::new(TodoEvent::Debug).target(entity));
+                        },
+                        Code::KeyZ if state.modifiers.ctrl && state.modifiers.shift => {
+                            state.insert_event(Event::new(TodoEvent::Redo).target(entity));
+                        },
+                        Code::KeyZ if state.modifiers.ctrl => {
+                            state.insert_event(Event::new(TodoEvent::Undo).target(entity));
+                        },
+                        _ => {}
                     }
                 }
                 _ => {}
@@ -110,8 +150,8 @@ impl Widget for TodoApp {
                     if let Some(new_data) = cod::downcast_rc(node.clone()) {
                         self.data = new_data;
                     }
-                    self.tasks.update(state, &self.data.tasks, *animate, |state, child_ref| {
-                        TaskWidget::new(child_ref).build(state, entity, |builder| builder)
+                    self.tasks.update(state, &self.data.tasks, *animate, |state, container, child_ref| {
+                        TaskWidget::new(child_ref).build(state, container, |builder| builder)
                     });
                 },
                 _ => {}
@@ -120,6 +160,42 @@ impl Widget for TodoApp {
     }
 }
 
+#[derive(Default)]
+struct TaskEditor {
+    task: Option<Rc<Task>>
+}
+
+impl Widget for TaskEditor {
+    type Ret = Entity;
+    fn on_build(&mut self, _state: &mut State, entity: Entity) -> Self:: Ret {
+        entity
+    }
+    fn on_event(&mut self, state: &mut State, entity: Entity, event: &mut Event) {
+        if let Some(todo_event) = event.message.downcast() {
+            match todo_event {
+                TodoEvent::Edit(id) => {
+                    configure_observer(state, entity, ConfigureObserver::Register(*id));
+                }
+                _ => {}
+            }
+        }
+        if let Some(observation) = event.message.downcast() {
+            match observation {
+                ObservationEvent::Updated(id, node, _animate) => {
+                    if let Some(new_data) = cod::downcast_rc(Rc::clone(&node)) {
+                        self.task = Some(new_data);
+                        println!("moi2");
+                    }
+                    entity.set_text(state, &format!("{}", id));
+                }
+                ObservationEvent::Removed(_id) => {
+                    self.task = None;
+                    entity.set_text(state, "-");
+                }
+            }
+        }
+    }
+}
 
 struct TaskWidget {
     task: Rc<Task>
@@ -157,7 +233,7 @@ impl Widget for TaskWidget {
         if let Some(window_event) = event.message.downcast() {
             match window_event {
                 WindowEvent::MouseDown(MouseButton::Left) => {
-                    state.insert_event(Event::new(TodoEvent::Remove(self.task.header().id())).propagate(Propagation::Up).target(entity));
+                    state.insert_event(Event::new(TodoEvent::Edit(self.task.header().id())).propagate(Propagation::Up).target(entity));
                 },
                 _ => {}
             }

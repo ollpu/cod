@@ -6,20 +6,27 @@ use cod::Rc;
 use crate::{UpdateEvent, AnimationRequest};
 
 pub struct OptionDiffer<T> {
+    container: Entity,
     child: Option<(cod::ID, Entity, *const T)>,
 }
 impl<T> Default for OptionDiffer<T> {
     fn default() -> Self {
-        Self { child: None }
+        Self { 
+            container: Entity::null(),
+            child: None,
+        }
     }
 }
 
 impl<T: Node + Clone> OptionDiffer<T> {
-    pub fn update<C: FnMut(&mut State, Rc<T>) -> Entity>(&mut self, state: &mut State, updated: &Option<cod::Child<T>>, animate: bool, create: C) {
+    pub fn set_container(&mut self, entity: Entity) {
+        self.container = entity;
+    }
+    pub fn update<C: FnMut(&mut State, Entity, Rc<T>) -> Entity>(&mut self, state: &mut State, updated: &Option<cod::Child<T>>, animate: bool, create: C) {
         self.update_raw(state, updated.as_ref(), animate, create);
     }
 
-    pub fn update_raw<C: FnMut(&mut State, Rc<T>) -> Entity>(&mut self, state: &mut State, updated: Option<&cod::Child<T>>, animate: bool, mut create: C) {
+    pub fn update_raw<C: FnMut(&mut State, Entity, Rc<T>) -> Entity>(&mut self, state: &mut State, updated: Option<&cod::Child<T>>, animate: bool, mut create: C) {
         match (&mut self.child, updated) {
             (Some(ref mut cur), Some(upd)) if cur.0 == upd.header().id() => {
                 let node = upd.get_ref();
@@ -42,7 +49,7 @@ impl<T: Node + Clone> OptionDiffer<T> {
                 }
                 self.child = if let Some(upd) = updated {
                     let upd_ref = upd.get_ref();
-                    let entity = create(state, upd_ref.clone());
+                    let entity = create(state, self.container, upd_ref.clone());
                     if animate && self.child.is_none() {
                         state.insert_event(Event::new(AnimationRequest::Appear).target(entity));
                     }

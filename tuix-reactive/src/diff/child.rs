@@ -11,7 +11,10 @@ use super::option::OptionDiffer;
 pub struct ChildDiffer<T>(OptionDiffer<T>);
 
 impl<T: Node + Clone> ChildDiffer<T> {
-    pub fn update<C: FnMut(&mut State, Rc<T>) -> Entity>(&mut self, state: &mut State, updated: &cod::Child<T>, animate: bool, create: C) {
+    pub fn set_container(&mut self, entity: Entity) {
+        self.0.set_container(entity);
+    }
+    pub fn update<C: FnMut(&mut State, Entity, Rc<T>) -> Entity>(&mut self, state: &mut State, updated: &cod::Child<T>, animate: bool, create: C) {
         self.0.update_raw(state, Some(updated), animate, create);
     }
 }

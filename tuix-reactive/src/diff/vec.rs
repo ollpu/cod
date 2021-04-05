@@ -5,16 +5,23 @@ use cod::Rc;
 use crate::{UpdateEvent, AnimationRequest};
 
 pub struct VecDiffer<T> {
+    container: Entity,
     list: Vec<(cod::ID, Entity, *const T, bool)>
 }
 impl<T> Default for VecDiffer<T> {
     fn default() -> Self {
-        Self { list: Default::default() }
+        Self { 
+            container: Entity::null(),
+            list: Default::default(),
+        }
     }
 }
 
 impl<T: Node + Clone> VecDiffer<T> {
-    pub fn update<C: FnMut(&mut State, Rc<T>) -> Entity>(&mut self, state: &mut State, updated: &Vec<cod::Child<T>>, animate: bool, mut create: C) {
+    pub fn set_container(&mut self, entity: Entity) {
+        self.container = entity;
+    }
+    pub fn update<C: FnMut(&mut State, Entity, Rc<T>) -> Entity>(&mut self, state: &mut State, updated: &Vec<cod::Child<T>>, animate: bool, mut create: C) {
         let fast_path = self.list.iter().map(|it| it.0).eq(
             // TODO: potential optimization by caching ID in Child
             updated.iter().map(|ch| ch.get_id())
@@ -40,7 +47,7 @@ impl<T: Node + Clone> VecDiffer<T> {
                         old.3 = true;
                     },
                     Err(_) => {
-                       let entity = create(state, upd_ref.clone());
+                       let entity = create(state, self.container, upd_ref.clone());
                        if animate {
                            state.insert_event(Event::new(AnimationRequest::Appear).target(entity));
                        }
