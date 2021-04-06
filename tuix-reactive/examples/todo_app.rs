@@ -20,7 +20,7 @@ struct TodoState {
 
 #[derive(Debug, Clone, PartialEq)]
 enum TodoEvent {
-    Add(Option<Rc<Task>>),
+    Add(String),
     Remove(cod::ID),
     Edit(cod::ID),
     Debug,
@@ -33,7 +33,7 @@ struct TodoApp {
     undo_manager: BasicUndoManager<TodoState>,
 
     data: Rc<TodoState>,
-    tasks: VecDiffer<Task>,
+    //tasks: VecDiffer<Task>,
     editor: Entity,
 }
 
@@ -45,7 +45,7 @@ impl TodoApp {
         Self {
             data: state.root_ref(),
             undo_manager: BasicUndoManager::new(state, 128),
-            tasks: Default::default(),
+            //tasks: Default::default(),
             editor: Entity::null(),
         }
     }
@@ -57,23 +57,60 @@ impl Widget for TodoApp {
         state.focused = entity;
         configure_observer(state, entity, ConfigureObserver::RegisterRoot);
         entity 
-            .set_background_color(state, Color::blue())
+            .set_background_color(state, Color::rgb(50,50,50))
             .set_flex_direction(state, FlexDirection::Row)
             .set_flex_grow(state, 1.0);
-        let container = VBox::new().build(state, entity, |builder| {
-            builder.set_flex_grow(1.0)
-        });
-        self.tasks.set_container(container);
+        
+        let container = VBox::new().build(state, entity, |builder| builder.set_flex_grow(1.0));
+
+        Textbox::new("Enter new todo here...")
+        .on_submit(move |val| Event::new(TodoEvent::Add(val.to_owned())).target(entity))
+        .build(state, container, |builder| 
+            builder
+                .set_height(Length::Pixels(30.0))
+                .set_padding_left(Length::Pixels(5.0))
+        );
+        
+        let task_list = TaskList::new(self.data.clone()).build(state, container, |builder| builder);
+        // let container = VBox::new().build(state, entity, |builder| {
+        //     builder.set_flex_grow(1.0)
+        // });
+        //self.tasks.set_container(container);
         self.editor = TaskEditor::default().build(state, entity, |builder|
             builder
                 .set_flex_grow(1.0)
-                .set_background_color(Color::green())
+                .set_background_color(Color::rgb(100,100,100))
         );
         entity
     }
 
     fn on_event(&mut self, state: &mut State, entity: Entity, event: &mut Event) {
         self.undo_manager.on_event(state, event);
+
+        // Handle Window Events
+        if let Some(window_event) = event.message.downcast() {
+            match window_event {
+                WindowEvent::KeyDown(code, _) => {
+                    match *code {
+                        Code::KeyA if state.modifiers.ctrl => {
+                            state.insert_event(Event::new(TodoEvent::Add("Test".to_owned())).target(entity));
+                        },
+                        Code::KeyD if state.modifiers.ctrl => {
+                            state.insert_event(Event::new(TodoEvent::Debug).target(entity));
+                        },
+                        Code::KeyZ if state.modifiers.ctrl && state.modifiers.shift => {
+                            state.insert_event(Event::new(TodoEvent::Redo).target(entity));
+                        },
+                        Code::KeyZ if state.modifiers.ctrl => {
+                            state.insert_event(Event::new(TodoEvent::Undo).target(entity));
+                        },
+                        _ => {}
+                    }
+                }
+                _ => {}
+            }
+        }
+
         // Handle Custom Todo Events
         if let Some(todo_event) = event.message.downcast::<TodoEvent>() {
             match todo_event.clone() {
@@ -81,14 +118,17 @@ impl Widget for TodoApp {
                     println!("Add a Task");
                     
                     state.insert_event(Event::new(TodoEvent::StartUndoState).target(entity));
-                    mutate(state, entity, &self.data, |data| {
+                    // Mutate the app state to add the new task
+                    mutate(state, entity, &self.data, move |data| {
                         data.tasks.push(cod::Child::with_parent(&*data, Task {
                             header: Default::default(),
-                            description: "Test".to_owned(),
+                            description: task.clone(),
                             completed: false,
                         }));
                     });
                     event.consume();
+
+                    state.focused = entity;
                 }
                 TodoEvent::Debug => {
                     println!("{:?}", self.data);
@@ -117,33 +157,52 @@ impl Widget for TodoApp {
                     self.undo_manager.redo(state);
                     event.consume();
                 }
-            }
-        }
-        
-        // Handle Window Events
-        if let Some(window_event) = event.message.downcast() {
-            match window_event {
-                WindowEvent::KeyDown(code, _) => {
-                    match *code {
-                        Code::KeyA => {
-                            state.insert_event(Event::new(TodoEvent::Add(None)).target(entity));
-                        },
-                        Code::KeyD => {
-                            state.insert_event(Event::new(TodoEvent::Debug).target(entity));
-                        },
-                        Code::KeyZ if state.modifiers.ctrl && state.modifiers.shift => {
-                            state.insert_event(Event::new(TodoEvent::Redo).target(entity));
-                        },
-                        Code::KeyZ if state.modifiers.ctrl => {
-                            state.insert_event(Event::new(TodoEvent::Undo).target(entity));
-                        },
-                        _ => {}
-                    }
-                }
-                _ => {}
+                _=> {}
             }
         }
 
+        if let Some(observation) = event.message.downcast() {
+            match observation {
+                ObservationEvent::Updated(_id, node, animate) => {
+                    if let Some(new_data) = cod::downcast_rc(node.clone()) {
+                        self.data = new_data;
+                    }
+                },
+                _ => {}
+            }
+        }
+    }
+}
+
+#[derive(Default)]
+struct TaskList {
+    data: Rc<TodoState>,
+    tasks: VecDiffer<Task>,
+}
+
+impl TaskList {
+    pub fn new(data: Rc<TodoState>) -> Self {
+        Self {
+            data: data.clone(),
+            tasks: Default::default(),
+        }
+    }
+}
+
+impl Widget for TaskList {
+    type Ret = Entity;
+    fn on_build(&mut self, state: &mut State, entity: Entity) -> Self::Ret {
+        configure_observer(state, entity, ConfigureObserver::RegisterRoot);
+
+        self.tasks.set_container(entity);
+
+        state.focused = entity;
+        entity
+            .set_flex_grow(state, 1.0)
+            .set_background_color(state, Color::rgb(200,200,200))
+    }
+
+    fn on_event(&mut self, state: &mut State, entity: Entity, event: &mut Event) {
         if let Some(observation) = event.message.downcast() {
             match observation {
                 ObservationEvent::Updated(_id, node, animate) => {
@@ -159,6 +218,8 @@ impl Widget for TodoApp {
         }
     }
 }
+
+
 
 #[derive(Default)]
 struct TaskEditor {
@@ -215,8 +276,9 @@ impl Widget for TaskWidget {
         state.insert_event(Event::new(UpdateEvent::Update(Rc::clone(&self.task), false)).target(entity));
         entity
             .set_flex_basis(state, Length::Pixels(50.0))
-            .set_background_color(state, Color::red())
+            .set_background_color(state, Color::rgb(80,80,80))
             .set_margin(state, Length::Pixels(5.0))
+            .set_padding_left(state, Length::Pixels(5.0))
     }
     fn on_event(&mut self, state: &mut State, entity: Entity, event: &mut Event) {
         if let Some(update) = event.message.downcast() {
