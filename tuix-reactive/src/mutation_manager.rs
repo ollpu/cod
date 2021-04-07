@@ -2,6 +2,8 @@ use cod::{ID, NodeClone, Rc, Weak};
 use tuix::*;
 use std::cell::RefCell;
 
+use crate::DynUpdateEvent;
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum ConfigureObserver {
     RegisterRoot,
@@ -58,34 +60,14 @@ impl PartialEq for MutationEvent {
 
 pub struct MutationManager<T: NodeClone + Clone> {
     state: cod::State<T>,
-    observers: Vec<(Entity, ID, Weak<dyn NodeClone>, bool)>,
+    observers: Vec<Observer>,
 }
 
-#[derive(Clone)]
-/// Mirrors UpdateEvent, expect the data is sent as `dyn` by the mutation manager,
-/// because it is unaware of the concrete types.
-pub enum ObservationEvent {
-    Updated(ID, Rc<dyn NodeClone>, bool),
-    Removed(ID),
-}
-impl fmt::Debug for ObservationEvent {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ObservationEvent::Updated(id, node, animate) => {
-                f.debug_tuple("Updated")
-                    .field(id)
-                    .field(&Rc::as_ptr(node))
-                    .field(&animate)
-                    .finish()
-            },
-            ObservationEvent::Removed(id) => {
-                f.debug_tuple("Removed").field(id).finish()
-            }
-        }
-    }
-}
-impl PartialEq for ObservationEvent {
-    fn eq(&self, _other: &Self) -> bool { false }
+struct Observer {
+    entity: Entity,
+    id: ID,
+    ptr: Weak<dyn NodeClone>,
+    keep: bool,
 }
 
 impl<T: NodeClone + Clone> MutationManager<T> {
@@ -142,36 +124,41 @@ impl<T: NodeClone + Clone> MutationManager<T> {
 
     fn check_all_observers(&mut self, state: &mut State, animate: bool) {
         let new_state = self.state.clone();
-        for (entity, id, old_ref, keep) in self.observers.iter_mut() {
+        for Observer { entity, id, ptr, keep } in self.observers.iter_mut() {
             if let Some(new_ref) = new_state.ref_from_id(*id) {
-                if Weak::as_ptr(old_ref) != Rc::as_ptr(&new_ref) {
-                    *old_ref = Rc::downgrade(&new_ref);
-                    state.insert_event(Event::new(ObservationEvent::Updated(*id, new_ref, animate)).target(*entity).propagate(Propagation::Direct));
+                if Weak::as_ptr(ptr) != Rc::as_ptr(&new_ref) {
+                    *ptr = Rc::downgrade(&new_ref);
+                    state.insert_event(Event::new(DynUpdateEvent::Update(new_ref, animate)).target(*entity).propagate(Propagation::Direct));
                 }
                 *keep = true;
             } else {
-                state.insert_event(Event::new(ObservationEvent::Removed(*id)).target(*entity).propagate(Propagation::Direct));
+                state.insert_event(Event::new(DynUpdateEvent::Remove(*id, animate)).target(*entity).propagate(Propagation::Direct));
                 *keep = false;
             }
         }
-        self.observers.retain(|t| t.3);
+        self.observers.retain(|t| t.keep);
     }
 
     fn add_observer(&mut self, state: &mut State, entity: Entity, id: ID) {
         if let Some(node) = self.state.ref_from_id(id) {
-            self.observers.push((entity, id, Rc::downgrade(&node), true));
-            state.insert_event(Event::new(ObservationEvent::Updated(id, node, false)).target(entity).propagate(Propagation::Direct));
+            self.observers.push(Observer {
+                entity,
+                id,
+                ptr: Rc::downgrade(&node),
+                keep: true,
+            });
+            state.insert_event(Event::new(DynUpdateEvent::Update(node, false)).target(entity).propagate(Propagation::Direct));
         } else {
-            state.insert_event(Event::new(ObservationEvent::Removed(id)).target(entity).propagate(Propagation::Direct));
+            state.insert_event(Event::new(DynUpdateEvent::Remove(id, false)).target(entity).propagate(Propagation::Direct));
         }
     }
 
     fn remove_observer(&mut self, entity: Entity, id: ID) {
-        self.observers.retain(|t| t.0 != entity || t.1 != id);
+        self.observers.retain(|t| t.entity != entity || t.id != id);
     }
 
     fn remove_entity(&mut self, entity: Entity) {
-        self.observers.retain(|t| t.0 != entity);
+        self.observers.retain(|t| t.entity != entity);
     }
 
     pub fn state(&self) -> &cod::State<T> {

@@ -3,7 +3,7 @@ use tuix::*;
 use cod::Node;
 use cod::Rc;
 
-use crate::{UpdateEvent, AnimationRequest};
+use crate::{DynUpdateEvent, AnimationRequest};
 
 pub struct OptionDiffer<T> {
     container: Entity,
@@ -32,7 +32,7 @@ impl<T: Node + Clone> OptionDiffer<T> {
                 let node = upd.get_ref();
                 if cur.2 != Rc::as_ptr(&node) {
                     cur.2 = Rc::as_ptr(&node);
-                    state.insert_event(Event::new(UpdateEvent::Update(node, animate)).target(cur.1).propagate(Propagation::Direct));
+                    state.insert_event(Event::new(DynUpdateEvent::Update(node, animate)).target(cur.1).propagate(Propagation::Direct));
                 }
             },
             _ => {
@@ -42,7 +42,7 @@ impl<T: Node + Clone> OptionDiffer<T> {
                 // (None, Some) => add and animate
                 if let Some(cur) = self.child {
                     if animate && updated.is_none() {
-                        state.insert_event(Event::new(UpdateEvent::<T>::Remove).target(cur.1).propagate(Propagation::Direct));
+                        state.insert_event(Event::new(DynUpdateEvent::Remove(cur.0, true)).target(cur.1).propagate(Propagation::Direct));
                     } else {
                         state.remove(cur.1);
                     }

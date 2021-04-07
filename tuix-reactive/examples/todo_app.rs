@@ -126,48 +126,39 @@ impl Widget for TodoApp {
                             completed: false,
                         }));
                     });
-                    event.consume();
 
                     state.focused = entity;
                 }
                 TodoEvent::Debug => {
                     println!("{:?}", self.data);
-                    event.consume();
                 }
                 TodoEvent::Remove(id) => {
                     state.insert_event(Event::new(TodoEvent::StartUndoState).target(entity));
                     mutate(state, entity, &self.data, move |data| {
                         data.tasks.retain(|t| t.get_id() != id);
                     });
-                    event.consume();
                 }
                 TodoEvent::Edit(id) => {
-                    state.insert_event(Event::new(TodoEvent::Edit(id)).target(self.editor).propagate(Propagation::Direct));
-                    event.consume();
+                    state.insert_event(Event::new(TodoEvent::Edit(id)).target(self.editor));
                 }
                 TodoEvent::StartUndoState => {
                     self.undo_manager.start_undo_state();
-                    event.consume();
                 }
                 TodoEvent::Undo => {
                     self.undo_manager.undo(state);
-                    event.consume();
                 }
                 TodoEvent::Redo => {
                     self.undo_manager.redo(state);
-                    event.consume();
                 }
-                _=> {}
             }
+            event.consume();
         }
 
-        if let Some(observation) = event.message.downcast() {
-            match observation {
-                ObservationEvent::Updated(_id, node, animate) => {
-                    if let Some(new_data) = cod::downcast_rc(node.clone()) {
-                        self.data = new_data;
-                    }
-                },
+        if let Some(update) = downcast_update(event) {
+            match update {
+                UpdateEvent::Update(node, _animate) => {
+                    self.data = node;
+                }
                 _ => {}
             }
         }
@@ -203,16 +194,14 @@ impl Widget for TaskList {
     }
 
     fn on_event(&mut self, state: &mut State, entity: Entity, event: &mut Event) {
-        if let Some(observation) = event.message.downcast() {
-            match observation {
-                ObservationEvent::Updated(_id, node, animate) => {
-                    if let Some(new_data) = cod::downcast_rc(node.clone()) {
-                        self.data = new_data;
-                    }
-                    self.tasks.update(state, &self.data.tasks, *animate, |state, container, child_ref| {
+        if let Some(update) = downcast_update(event) {
+            match update {
+                UpdateEvent::Update(node, animate) => {
+                    self.data = node;
+                    self.tasks.update(state, &self.data.tasks, animate, |state, container, child_ref| {
                         TaskWidget::new(child_ref).build(state, container, |builder| builder)
                     });
-                },
+                }
                 _ => {}
             }
         }
@@ -240,16 +229,13 @@ impl Widget for TaskEditor {
                 _ => {}
             }
         }
-        if let Some(observation) = event.message.downcast() {
-            match observation {
-                ObservationEvent::Updated(id, node, _animate) => {
-                    if let Some(new_data) = cod::downcast_rc(Rc::clone(&node)) {
-                        self.task = Some(new_data);
-                        println!("moi2");
-                    }
-                    entity.set_text(state, &format!("{}", id));
+        if let Some(update) = downcast_update::<Task>(event) {
+            match update {
+                UpdateEvent::Update(node, _animate) => {
+                    entity.set_text(state, &format!("{}", node.header.id()));
+                    self.task = Some(node);
                 }
-                ObservationEvent::Removed(_id) => {
+                UpdateEvent::Remove(_id, _animate) => {
                     self.task = None;
                     entity.set_text(state, "-");
                 }
@@ -273,7 +259,7 @@ impl TaskWidget {
 impl Widget for TaskWidget {
     type Ret = Entity;
     fn on_build(&mut self, state: &mut State, entity: Entity) -> Self::Ret {
-        state.insert_event(Event::new(UpdateEvent::Update(Rc::clone(&self.task), false)).target(entity));
+        initial_update(self, state, entity, Rc::clone(&self.task));
         entity
             .set_flex_basis(state, Length::Pixels(50.0))
             .set_background_color(state, Color::rgb(80,80,80))
@@ -281,13 +267,13 @@ impl Widget for TaskWidget {
             .set_padding_left(state, Length::Pixels(5.0))
     }
     fn on_event(&mut self, state: &mut State, entity: Entity, event: &mut Event) {
-        if let Some(update) = event.message.downcast() {
+        if let Some(update) = downcast_update(event) {
             match update {
-                UpdateEvent::Update(new_node, _animate) => {
-                    self.task = Rc::clone(new_node);
+                UpdateEvent::Update(node, _animate) => {
+                    self.task = node;
                     entity.set_text(state, &self.task.description);
-                },
-                UpdateEvent::Remove => {
+                }
+                UpdateEvent::Remove(_id, _animate) => {
                     state.remove(entity);
                 }
             }

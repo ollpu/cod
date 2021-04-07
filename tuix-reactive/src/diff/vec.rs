@@ -2,7 +2,7 @@ use tuix::*;
 use cod::Node;
 use cod::Rc;
 
-use crate::{UpdateEvent, AnimationRequest};
+use crate::{DynUpdateEvent, AnimationRequest};
 
 pub struct VecDiffer<T> {
     container: Entity,
@@ -30,7 +30,7 @@ impl<T: Node + Clone> VecDiffer<T> {
             for (old, upd) in self.list.iter().zip(updated.iter()) {
                 let upd_ref = upd.get_ref();
                 if old.2 != Rc::as_ptr(&upd_ref) {
-                    state.insert_event(Event::new(UpdateEvent::Update(upd_ref, animate)).target(old.1).propagate(Propagation::Direct));
+                    state.insert_event(Event::new(DynUpdateEvent::Update(upd_ref, animate)).target(old.1).propagate(Propagation::Direct));
                 }
             }
         } else {
@@ -43,7 +43,7 @@ impl<T: Node + Clone> VecDiffer<T> {
                     Ok(i) => {
                         let ref mut old = self.list[i];
                         new_list.push((old.0, old.1, Rc::as_ptr(&upd_ref), false));
-                        state.insert_event(Event::new(UpdateEvent::Update(upd_ref, animate)).target(old.1).propagate(Propagation::Direct));
+                        state.insert_event(Event::new(DynUpdateEvent::Update(upd_ref, animate)).target(old.1).propagate(Propagation::Direct));
                         old.3 = true;
                     },
                     Err(_) => {
@@ -58,7 +58,7 @@ impl<T: Node + Clone> VecDiffer<T> {
             for it in self.list.iter() {
                 if !it.3 {
                     if animate {
-                        state.insert_event(Event::new(UpdateEvent::<T>::Remove).target(it.1).propagate(Propagation::Direct));
+                        state.insert_event(Event::new(DynUpdateEvent::Remove(it.0, true)).target(it.1).propagate(Propagation::Direct));
                     } else {
                         state.remove(it.1);
                     }
