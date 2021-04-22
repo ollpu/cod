@@ -123,9 +123,9 @@ impl Context {
                             PollReason::Drop => {
                                 // initiate recursive removal
                                 context.borrow_mut().status = ContextStatus::Mutation(TraversalStatus::Removal);
-                                let new_node = Context::poll_dyn(context, reason, node);
+                                Context::poll_dyn(context, reason, node);
                                 context.borrow_mut().status = ContextStatus::Mutation(TraversalStatus::Inactive);
-                                new_node
+                                None
                             },
                             PollReason::MakeMutPre => {
                                 // temporarily deactivate the context
@@ -182,7 +182,7 @@ impl Context {
                     },
                     TraversalStatus::Removal => {
                         match reason {
-                            PollReason::Clone | PollReason::Manual => {
+                            PollReason::Drop | PollReason::Clone | PollReason::Manual => {
                                 if node.implements_poll_all() {
                                     node.poll_all();
                                 } else {
@@ -197,8 +197,7 @@ impl Context {
                                 // store map removal
                                 context.borrow_mut().node_map_erase(id);
                                 None
-                            },
-                            PollReason::Drop => None,
+                            }
                             _ => panic!()
                         }
                     },
@@ -273,13 +272,6 @@ impl Context {
         };
         context.status = ContextStatus::Inactive;
         result
-    }
-
-    pub(crate) fn end_replacement(context: &RefCell<Self>) -> impl Iterator<Item=IDMapUpdate> {
-        let mut context = context.borrow_mut();
-        assert!(matches!(context.status, ContextStatus::Inactive));
-        let updates = std::mem::take(&mut context.updates);
-        updates.into_iter()
     }
 }
 

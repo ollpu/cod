@@ -408,8 +408,8 @@ impl<'a, R: NodeClone + Clone, T: NodeClone + ?Sized> Drop for MutRef<'a, R, T> 
         CONTEXT.with(|c| {
             self.state.apply_updates(Context::end_mutate(c));
         });
-        self.state.id_lookup.insert(self.node.header().id, Rc::downgrade(&Rc::clone(&self.node).into_dyn()));
         let mut prev_node = Rc::clone(&self.node).into_dyn();
+        self.state.id_lookup.insert(prev_node.header().id, Rc::downgrade(&prev_node));
         while let Some(parent_id) = prev_node.header().parent_id {
             let parent = Weak::upgrade(self.state.id_lookup.get(&parent_id).unwrap()).unwrap();
             CONTEXT.with(|c| {
@@ -418,15 +418,13 @@ impl<'a, R: NodeClone + Clone, T: NodeClone + ?Sized> Drop for MutRef<'a, R, T> 
                 );
             });
             prev_node = parent.dyn_clone();
+            self.state.id_lookup.insert(prev_node.header().id, Rc::downgrade(&prev_node));
             CONTEXT.with(|c| {
                 if !Context::finish_replacement(c) {
                     panic!("Cod: Could not find associated `Child` while traversing up")
                 }
             });
         }
-        CONTEXT.with(|c| {
-            self.state.apply_updates(Context::end_replacement(c));
-        });
         self.state.root = downcast_rc(prev_node).unwrap();
     }
 }
