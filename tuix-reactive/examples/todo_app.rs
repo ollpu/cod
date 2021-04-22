@@ -212,6 +212,7 @@ impl Widget for TaskList {
 struct TaskEditor {
     title: Entity,
     textbox: Entity,
+    edit_latch: bool,
     task: Option<Rc<Task>>
 }
 
@@ -281,6 +282,10 @@ impl Widget for TaskEditor {
             match edit {
                 ChangeDescription(text) => {
                     if let Some(task) = &self.task {
+                        if self.edit_latch {
+                            self.edit_latch = false;
+                            state.insert_event(Event::new(TodoEvent::StartUndoState).target(entity).propagate(Propagation::Up));
+                        }
                         let text = text.clone();
                         mutate(state, entity, task, move |data| {
                             data.description = text.clone(); // FIXME
@@ -292,6 +297,14 @@ impl Widget for TaskEditor {
                         state.insert_event(Event::new(TodoEvent::Remove(task.header.id())).target(entity).propagate(Propagation::Up));
                     }
                 }
+            }
+        }
+        if let Some(window_event) = event.message.downcast() {
+            match window_event {
+                WindowEvent::FocusIn => {
+                    self.edit_latch = true;
+                }
+                _ => {}
             }
         }
     }
