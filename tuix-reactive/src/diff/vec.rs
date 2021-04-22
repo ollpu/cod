@@ -27,9 +27,10 @@ impl<T: Node + Clone> VecDiffer<T> {
             updated.iter().map(|ch| ch.get_id())
         );
         if fast_path {
-            for (old, upd) in self.list.iter().zip(updated.iter()) {
+            for (old, upd) in self.list.iter_mut().zip(updated.iter()) {
                 let upd_ref = upd.get_ref();
                 if old.2 != Rc::as_ptr(&upd_ref) {
+                    old.2 = Rc::as_ptr(&upd_ref);
                     state.insert_event(Event::new(DynUpdateEvent::Update(upd_ref, animate)).direct(old.1));
                 }
             }
