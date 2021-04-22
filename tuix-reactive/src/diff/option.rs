@@ -32,7 +32,7 @@ impl<T: Node + Clone> OptionDiffer<T> {
                 let node = upd.get_ref();
                 if cur.2 != Rc::as_ptr(&node) {
                     cur.2 = Rc::as_ptr(&node);
-                    state.insert_event(Event::new(DynUpdateEvent::Update(node, animate)).target(cur.1).propagate(Propagation::Direct));
+                    state.insert_event(Event::new(DynUpdateEvent::Update(node, animate)).direct(cur.1));
                 }
             },
             _ => {
@@ -42,7 +42,7 @@ impl<T: Node + Clone> OptionDiffer<T> {
                 // (None, Some) => add and animate
                 if let Some(cur) = self.child {
                     if animate && updated.is_none() {
-                        state.insert_event(Event::new(DynUpdateEvent::Remove(cur.0, true)).target(cur.1).propagate(Propagation::Direct));
+                        state.insert_event(Event::new(DynUpdateEvent::Remove(cur.0, true)).direct(cur.1));
                     } else {
                         state.remove(cur.1);
                     }
@@ -51,7 +51,7 @@ impl<T: Node + Clone> OptionDiffer<T> {
                     let upd_ref = upd.get_ref();
                     let entity = create(state, self.container, upd_ref.clone());
                     if animate && self.child.is_none() {
-                        state.insert_event(Event::new(AnimationRequest::Appear).target(entity).propagate(Propagation::Direct));
+                        state.insert_event(Event::new(AnimationRequest::Appear).direct(entity));
                     }
                     Some((upd_ref.header().id(), entity, Rc::as_ptr(&upd_ref)))
                 } else {

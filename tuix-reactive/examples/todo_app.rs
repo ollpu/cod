@@ -33,7 +33,6 @@ struct TodoApp {
     undo_manager: BasicUndoManager<TodoState>,
 
     data: Rc<TodoState>,
-    //tasks: VecDiffer<Task>,
     editor: Entity,
 }
 
@@ -45,7 +44,6 @@ impl TodoApp {
         Self {
             data: state.root_ref(),
             undo_manager: BasicUndoManager::new(state, 128),
-            //tasks: Default::default(),
             editor: Entity::null(),
         }
     }
@@ -58,28 +56,24 @@ impl Widget for TodoApp {
         configure_observer(state, entity, ConfigureObserver::RegisterRoot);
         entity 
             .set_background_color(state, Color::rgb(50,50,50))
-            .set_flex_direction(state, FlexDirection::Row)
-            .set_flex_grow(state, 1.0);
+            .set_layout_type(state, LayoutType::Horizontal)
+            .set_width(state, Stretch(1.));
         
-        let container = VBox::new().build(state, entity, |builder| builder.set_flex_grow(1.0));
+        let container = Column::new().build(state, entity, |builder| builder.set_width(Stretch(1.)));
 
         Textbox::new("Enter new todo here...")
-        .on_submit(move |val| Event::new(TodoEvent::Add(val.to_owned())).target(entity))
-        .build(state, container, |builder| 
-            builder
-                .set_height(Length::Pixels(30.0))
-                .set_padding_left(Length::Pixels(5.0))
-        );
+            .on_submit(move |val| Event::new(TodoEvent::Add(val.to_owned())).direct(entity))
+            .build(state, container, |builder| 
+                builder
+                    .set_height(Pixels(30.0))
+                    .set_padding_left(Pixels(5.0))
+            );
         
         let task_list = TaskList::new(self.data.clone()).build(state, container, |builder| builder);
-        // let container = VBox::new().build(state, entity, |builder| {
-        //     builder.set_flex_grow(1.0)
-        // });
-        //self.tasks.set_container(container);
         self.editor = TaskEditor::default().build(state, entity, |builder|
             builder
-                .set_flex_grow(1.0)
-                .set_background_color(Color::rgb(100,100,100))
+                .set_width(Stretch(1.))
+                .set_height(Stretch(1.))
         );
         entity
     }
@@ -93,16 +87,16 @@ impl Widget for TodoApp {
                 WindowEvent::KeyDown(code, _) => {
                     match *code {
                         Code::KeyA if state.modifiers.ctrl => {
-                            state.insert_event(Event::new(TodoEvent::Add("Test".to_owned())).target(entity));
+                            state.insert_event(Event::new(TodoEvent::Add("Test".to_owned())).direct(entity));
                         },
                         Code::KeyD if state.modifiers.ctrl => {
-                            state.insert_event(Event::new(TodoEvent::Debug).target(entity));
+                            state.insert_event(Event::new(TodoEvent::Debug).direct(entity));
                         },
                         Code::KeyZ if state.modifiers.ctrl && state.modifiers.shift => {
-                            state.insert_event(Event::new(TodoEvent::Redo).target(entity));
+                            state.insert_event(Event::new(TodoEvent::Redo).direct(entity));
                         },
                         Code::KeyZ if state.modifiers.ctrl => {
-                            state.insert_event(Event::new(TodoEvent::Undo).target(entity));
+                            state.insert_event(Event::new(TodoEvent::Undo).direct(entity));
                         },
                         _ => {}
                     }
@@ -117,7 +111,7 @@ impl Widget for TodoApp {
                 TodoEvent::Add(task) => {
                     println!("Add a Task");
                     
-                    state.insert_event(Event::new(TodoEvent::StartUndoState).target(entity));
+                    state.insert_event(Event::new(TodoEvent::StartUndoState).direct(entity));
                     // Mutate the app state to add the new task
                     mutate(state, entity, &self.data, move |data| {
                         data.tasks.push(cod::Child::with_parent(&*data, Task {
@@ -133,13 +127,13 @@ impl Widget for TodoApp {
                     println!("{:?}", self.data);
                 }
                 TodoEvent::Remove(id) => {
-                    state.insert_event(Event::new(TodoEvent::StartUndoState).target(entity));
+                    state.insert_event(Event::new(TodoEvent::StartUndoState).direct(entity));
                     mutate(state, entity, &self.data, move |data| {
                         data.tasks.retain(|t| t.get_id() != id);
                     });
                 }
                 TodoEvent::Edit(id) => {
-                    state.insert_event(Event::new(TodoEvent::Edit(id)).target(self.editor));
+                    state.insert_event(Event::new(TodoEvent::Edit(id)).direct(self.editor));
                 }
                 TodoEvent::StartUndoState => {
                     self.undo_manager.start_undo_state();
@@ -189,8 +183,9 @@ impl Widget for TaskList {
 
         state.focused = entity;
         entity
-            .set_flex_grow(state, 1.0)
             .set_background_color(state, Color::rgb(200,200,200))
+            .set_child_top(state, Pixels(2.))
+            .set_child_between(state, Pixels(2.))
     }
 
     fn on_event(&mut self, state: &mut State, entity: Entity, event: &mut Event) {
@@ -212,19 +207,53 @@ impl Widget for TaskList {
 
 #[derive(Default)]
 struct TaskEditor {
+    title: Entity,
+    textbox: Entity,
     task: Option<Rc<Task>>
+}
+
+#[derive(Clone, PartialEq, Debug)]
+enum EditorEvent {
+    ChangeDescription(String),
+    Delete,
 }
 
 impl Widget for TaskEditor {
     type Ret = Entity;
-    fn on_build(&mut self, _state: &mut State, entity: Entity) -> Self:: Ret {
+    fn on_build(&mut self, state: &mut State, entity: Entity) -> Self:: Ret {
+        entity
+            .set_background_color(state, Color::rgb(70, 70, 70))
+            .set_child_space(state, Pixels(8.))
+            .set_child_between(state, Pixels(8.));
+        self.title = Label::new("-").build(state, entity, |b| b.set_font_size(24.).set_height(Pixels(24.)));
+        Row::new().build(state, entity, |b| b.set_background_color(Color::white()).set_height(Pixels(1.)));
+        self.textbox = Textbox::new("")
+            .on_change(move |text| Event::new(EditorEvent::ChangeDescription(text.to_owned())).direct(entity))
+            .build(state, entity, |b| b
+                   //.set_background_color(Color::rgb(100, 100, 100))
+                   .set_height(Pixels(30.))
+                   .set_width(Stretch(1.))
+                   .set_border_width(Pixels(2.))
+                   .set_padding(Pixels(5.))
+                   .set_background_color(Color::rgb(50, 50, 50))
+                   .set_border_color(Color::rgb(100, 100, 100))
+                  );
+        Button::with_label("Delete")
+            .on_release(Event::new(EditorEvent::Delete).direct(entity))
+            .build(state, entity, |b| b
+                   .set_height(Pixels(30.))
+                   .set_width(Pixels(80.))
+                   .set_right(Stretch(1.))
+                   .set_background_color(Color::rgb(90, 90, 100))
+                   .set_text_justify(Justify::Center)
+                  );
         entity
     }
     fn on_event(&mut self, state: &mut State, entity: Entity, event: &mut Event) {
         if let Some(todo_event) = event.message.downcast() {
             match todo_event {
                 TodoEvent::Edit(id) => {
-                    configure_observer(state, entity, ConfigureObserver::Register(*id));
+                    configure_observer(state, entity, ConfigureObserver::Replace(*id));
                 }
                 _ => {}
             }
@@ -232,12 +261,32 @@ impl Widget for TaskEditor {
         if let Some(update) = downcast_update::<Task>(event) {
             match update {
                 UpdateEvent::Update(node, _animate) => {
-                    entity.set_text(state, &format!("{}", node.header.id()));
+                    self.title.set_text(state, &format!("Task #{}", node.header.id()));
+                    state.insert_event(Event::new(TextboxEvent::SetValue(node.description.clone())).target(self.textbox));
                     self.task = Some(node);
                 }
                 UpdateEvent::Remove(_id, _animate) => {
                     self.task = None;
-                    entity.set_text(state, "-");
+                    self.title.set_text(state, "-");
+                    state.insert_event(Event::new(TextboxEvent::SetValue("".to_owned())).target(self.textbox));
+                }
+            }
+        }
+        if let Some(edit) = event.message.downcast() {
+            use EditorEvent::*;
+            match edit {
+                ChangeDescription(text) => {
+                    if let Some(task) = &self.task {
+                        let text = text.clone();
+                        mutate(state, entity, task, move |data| {
+                            data.description = text.clone(); // FIXME
+                        });
+                    }
+                }
+                Delete => {
+                    if let Some(task) = &self.task {
+                        state.insert_event(Event::new(TodoEvent::Remove(task.header.id())).target(entity).propagate(Propagation::Up));
+                    }
                 }
             }
         }
@@ -261,10 +310,9 @@ impl Widget for TaskWidget {
     fn on_build(&mut self, state: &mut State, entity: Entity) -> Self::Ret {
         initial_update(self, state, entity, Rc::clone(&self.task));
         entity
-            .set_flex_basis(state, Length::Pixels(50.0))
+            .set_height(state, Pixels(50.0))
             .set_background_color(state, Color::rgb(80,80,80))
-            .set_margin(state, Length::Pixels(5.0))
-            .set_padding_left(state, Length::Pixels(5.0))
+            .set_padding_left(state, Pixels(5.0))
     }
     fn on_event(&mut self, state: &mut State, entity: Entity, event: &mut Event) {
         if let Some(update) = downcast_update(event) {
@@ -289,12 +337,13 @@ impl Widget for TaskWidget {
         if let Some(request) = event.message.downcast() {
             match request {
                 AnimationRequest::Appear => {
-                    let anim = AnimationState::new()
-                        .with_duration(std::time::Duration::from_secs_f32(0.2))
-                        .with_keyframe((0.0, Length::Pixels(0.0)))
-                        .with_keyframe((1.0, Length::Pixels(50.0)));
-                    let anim = state.style.flex_basis.insert_animation(anim);
-                    state.style.flex_basis.play_animation(entity, anim);
+                    // Slightly broken in Tuix currently
+                    // let anim = AnimationState::new()
+                    //     .with_duration(std::time::Duration::from_secs_f32(0.2))
+                    //     .with_keyframe((0.0, Pixels(0.0)))
+                    //     .with_keyframe((1.0, Pixels(50.0)));
+                    // let anim = state.style.height.insert_animation(anim);
+                    // state.style.height.play_animation(entity, anim);
                 },
                 _ => {}
             }

@@ -128,11 +128,11 @@ impl<T: NodeClone + Clone> MutationManager<T> {
             if let Some(new_ref) = new_state.ref_from_id(*id) {
                 if Weak::as_ptr(ptr) != Rc::as_ptr(&new_ref) {
                     *ptr = Rc::downgrade(&new_ref);
-                    state.insert_event(Event::new(DynUpdateEvent::Update(new_ref, animate)).target(*entity).propagate(Propagation::Direct));
+                    state.insert_event(Event::new(DynUpdateEvent::Update(new_ref, animate)).direct(*entity));
                 }
                 *keep = true;
             } else {
-                state.insert_event(Event::new(DynUpdateEvent::Remove(*id, animate)).target(*entity).propagate(Propagation::Direct));
+                state.insert_event(Event::new(DynUpdateEvent::Remove(*id, animate)).direct(*entity));
                 *keep = false;
             }
         }
@@ -147,9 +147,9 @@ impl<T: NodeClone + Clone> MutationManager<T> {
                 ptr: Rc::downgrade(&node),
                 keep: true,
             });
-            state.insert_event(Event::new(DynUpdateEvent::Update(node, false)).target(entity).propagate(Propagation::Direct));
+            state.insert_event(Event::new(DynUpdateEvent::Update(node, false)).direct(entity));
         } else {
-            state.insert_event(Event::new(DynUpdateEvent::Remove(id, false)).target(entity).propagate(Propagation::Direct));
+            state.insert_event(Event::new(DynUpdateEvent::Remove(id, false)).direct(entity));
         }
     }
 

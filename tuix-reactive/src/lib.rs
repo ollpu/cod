@@ -16,6 +16,8 @@ use cod::{ID, Rc, NodeClone};
 
 pub type DynUpdateEvent = UpdateEvent<dyn NodeClone>;
 
+/// A concrete `UpdateEvent<T>` is given by the `downcast_helper`. Actual events must be sent as
+/// [`DynUpdateEvent`] and [`into_dyn`] can be used to convert to that.
 pub enum UpdateEvent<T: ?Sized> {
     /// Updated data and whether animations should be performed as a result of this update.
     /// 
