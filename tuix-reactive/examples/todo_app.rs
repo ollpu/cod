@@ -5,6 +5,8 @@ use cod::Node;
 
 use std::rc::Rc;
 
+static STYLE: &str = include_str!("todo_style.css");
+
 #[derive(Node, Debug, Clone, PartialEq)]
 struct Task {
     header: cod::Header,
@@ -52,11 +54,11 @@ impl TodoApp {
 impl Widget for TodoApp {
     type Ret = Entity;
     fn on_build(&mut self, state: &mut State, entity: Entity) -> Self::Ret {
-        state.focused = entity;
+        state.set_focus(entity);
         configure_observer(state, entity, ConfigureObserver::RegisterRoot);
         entity 
             .set_background_color(state, Color::rgb(50,50,50))
-            .set_layout_type(state, LayoutType::Horizontal)
+            .set_layout_type(state, LayoutType::Row)
             .set_width(state, Stretch(1.));
         
         let container = Column::new().build(state, entity, |builder| builder.set_width(Stretch(1.)));
@@ -66,7 +68,8 @@ impl Widget for TodoApp {
             .build(state, container, |builder| 
                 builder
                     .set_height(Pixels(30.0))
-                    .set_padding_left(Pixels(5.0))
+                    .set_child_space(Stretch(1.0))
+                    .set_child_left(Pixels(5.0))
             );
         
         let task_list = TaskList::new(self.data.clone()).build(state, container, |builder| builder);
@@ -121,7 +124,7 @@ impl Widget for TodoApp {
                         }));
                     });
 
-                    state.focused = entity;
+                    //state.set_focus(entity);
                 }
                 TodoEvent::Debug => {
                     println!("{:?}", self.data);
@@ -234,7 +237,8 @@ impl Widget for TaskEditor {
                    .set_height(Pixels(30.))
                    .set_width(Stretch(1.))
                    .set_border_width(Pixels(2.))
-                   .set_padding(Pixels(5.))
+                   .set_child_space(Stretch(1.0))
+                   .set_child_left(Pixels(5.))
                    .set_background_color(Color::rgb(50, 50, 50))
                    .set_border_color(Color::rgb(100, 100, 100))
                   );
@@ -245,7 +249,7 @@ impl Widget for TaskEditor {
                    .set_width(Pixels(80.))
                    .set_right(Stretch(1.))
                    .set_background_color(Color::rgb(90, 90, 100))
-                   .set_text_justify(Justify::Center)
+                   .set_child_space(Stretch(1.0))
                   );
         entity
     }
@@ -312,7 +316,7 @@ impl Widget for TaskWidget {
         entity
             .set_height(state, Pixels(50.0))
             .set_background_color(state, Color::rgb(80,80,80))
-            .set_padding_left(state, Pixels(5.0))
+            .set_child_left(state, Pixels(5.0))
     }
     fn on_event(&mut self, state: &mut State, entity: Entity, event: &mut Event) {
         if let Some(update) = downcast_update(event) {
@@ -338,12 +342,12 @@ impl Widget for TaskWidget {
             match request {
                 AnimationRequest::Appear => {
                     // Slightly broken in Tuix currently
-                    // let anim = AnimationState::new()
-                    //     .with_duration(std::time::Duration::from_secs_f32(0.2))
-                    //     .with_keyframe((0.0, Pixels(0.0)))
-                    //     .with_keyframe((1.0, Pixels(50.0)));
-                    // let anim = state.style.height.insert_animation(anim);
-                    // state.style.height.play_animation(entity, anim);
+                    let anim = AnimationState::new()
+                        .with_duration(std::time::Duration::from_secs_f32(0.2))
+                        .with_keyframe((0.0, Pixels(0.0)))
+                        .with_keyframe((1.0, Pixels(50.0)));
+                    let anim = state.style.height.insert_animation(anim);
+                    state.style.height.play_animation(entity, anim);
                 },
                 _ => {}
             }
@@ -354,8 +358,8 @@ impl Widget for TaskWidget {
 
 
 fn main() {
-    let app = Application::new(|state, window| {
-        window.set_title("Tuix Todos");
+    let app = Application::new(WindowDescription::new().with_title("Tuix Todos"), |state, window| {
+        state.add_theme(STYLE);
         TodoApp::new().build(state, window.entity(), |builder| builder);
     });
 

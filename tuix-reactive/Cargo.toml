@@ -7,3 +7,4 @@ edition = "2018"
 [dependencies]
 cod = {path = ".."}
 tuix = {git = "https://github.com/geom3trik/tuix", branch = "experiment"}
+# tuix = {path = "../../tuix"}

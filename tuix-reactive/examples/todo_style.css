@@ -1,0 +1,9 @@
+
+textbox {
+    border-width: 0px;
+}
+
+textbox:focus {
+    border-color: #82b4c8;
+    border-width: 2px;
+}
