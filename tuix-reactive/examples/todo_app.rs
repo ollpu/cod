@@ -148,7 +148,6 @@ impl Widget for TodoApp {
                     self.undo_manager.redo(state);
                 }
             }
-            event.consume();
         }
 
         if let Some(update) = downcast_update(event) {
@@ -346,15 +345,26 @@ impl Widget for TaskWidget {
         if let Some(window_event) = event.message.downcast() {
             match window_event {
                 WindowEvent::MouseDown(MouseButton::Left) => {
-                    state.insert_event(Event::new(TodoEvent::Edit(self.task.header().id())).propagate(Propagation::Up).target(entity));
+                    state.insert_event(Event::new(TodoEvent::Edit(self.task.header().id())).propagate(Propagation::All));
                 },
+                _ => {}
+            }
+        }
+        if let Some(todo_event) = event.message.downcast() {
+            match todo_event {
+                TodoEvent::Edit(id) => {
+                    if self.task.header.id() == *id {
+                        entity.set_background_color(state, Color::rgb(80, 85, 128));
+                    } else {
+                        entity.set_background_color(state, Color::rgb(80, 80, 80));
+                    }
+                }
                 _ => {}
             }
         }
         if let Some(request) = event.message.downcast() {
             match request {
                 AnimationRequest::Appear => {
-                    // Slightly broken in Tuix currently
                     let anim = AnimationState::new()
                         .with_duration(std::time::Duration::from_secs_f32(0.2))
                         .with_keyframe((0.0, Pixels(0.0)))
