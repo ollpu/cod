@@ -123,7 +123,7 @@ impl Context {
                             PollReason::Drop => {
                                 // initiate recursive removal
                                 context.borrow_mut().status = ContextStatus::Mutation(TraversalStatus::Removal);
-                                Context::poll_dyn(context, reason, node);
+                                Context::poll_dyn(context, PollReason::Manual, node);
                                 context.borrow_mut().status = ContextStatus::Mutation(TraversalStatus::Inactive);
                                 None
                             },
@@ -182,7 +182,7 @@ impl Context {
                     },
                     TraversalStatus::Removal => {
                         match reason {
-                            PollReason::Drop | PollReason::Clone | PollReason::Manual => {
+                            PollReason::Clone | PollReason::Manual => {
                                 if node.implements_poll_all() {
                                     node.poll_all();
                                 } else {
@@ -198,6 +198,9 @@ impl Context {
                                 context.borrow_mut().node_map_erase(id);
                                 None
                             }
+                            // because of the clone-on-drop trickery, additional Drops will also be
+                            // called, but we can ignore these.
+                            PollReason::Drop => None,
                             _ => panic!()
                         }
                     },
